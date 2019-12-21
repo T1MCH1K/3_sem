@@ -8,4 +8,33 @@
    a) if execvp is used, string splitting into "path" and "args" is all you need.
    b) the program should be environment($PATH variable)-sensitive: for ex.,'/bin/ls' should be executed with string 'ls'. 
 3. Collect exit codes via waitpid/WEXITSTATUS.
-4. Note that a size of command can reach a lot of kbytes: type "getconf ARG_MAX" cmd to check it.
+4. Note that a size of command can reach a lot of kbytes: type "getconf ARG_MAX" cmd to check it
+
+#include <stdio.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#include <string.h>
+
+char x[2097152];
+char* a[100000];
+
+int main() {
+while(1)
+{
+	int pid = fork();
+	if(pid == 0) 
+	{
+		fgets(x, 2097152, stdin);
+		a[0] = strtok(x, "\n ");
+		for (int i = 1; a[i - 1] != NULL; i++)
+		a[i] = strtok(NULL, "\n");
+		execvp(a[0], a);
+		break;
+	}
+	else 
+	{
+		int stat;
+		waitpid(pid, &stat, 0);
+		printf("Exit status: %d\n", WEXITSTATUS(stat));
+	}
+}

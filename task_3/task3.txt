@@ -1,0 +1,307 @@
+FIFO
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <time.h>
+
+const int datasize= 1 << 25;
+
+int main(){
+
+    srand(time(NULL));
+    char* first_data = malloc(datasize);
+    char* received_data = malloc(datasize);
+
+    for(int i = 0; i < datasize; i++) {
+        first_data[i] = (char)(i%256);
+        received_data[i] = 0;
+    }
+
+    int check(char* data1, char* data2, int size){
+         for(int i = 0; i < size; i++) {
+                if(data1[i] != data2[i]){
+                    return 0;
+                }
+             }
+        return 1;
+    }
+
+
+    for(int i = 1; i < 25; i += 4){
+        int buffer_size = 1 << i;
+        int fifo[2];
+        pipe(fifo);
+        int pid = fork();
+        if(pid < 0){
+        printf("Fork error\n");
+        return -1;
+        }
+
+        clock_t start = clock();
+
+        if(!pid) {
+            for(int i = 0; i < datasize; i += write(fifo[1],
+&first_data[i], buffer_size));
+                return 1;
+            }
+        else {
+            for(int i = 0; i < datasize; i += read(fifo[0],
+&received_data[i], buffer_size));
+            }
+        clock_t end = clock();
+
+
+        check(received_data,first_data, datasize);
+        printf("%d %f\n", buffer_size, (double)(end - start)/CLOCKS_PER_SEC);
+
+    }
+
+    free(first_data);
+    free(received_data);
+    return 0;
+}
+buff	FIFO
+2 	14.787760
+32 	0.903707
+512 	0.086958
+8192 	0.033792
+131072 	0.022335
+2097152 0.022060
+
+
+
+
+
+SHM
+
+
+
+#include <stdio.h>
+ #include <stdlib.h>
+ #include <sys/ipc.h>
+ #include <sys/shm.h>
+ #include <sys/types.h>
+ #include <unistd.h>
+ #include <fcntl.h>
+ #include <sys/stat.h>
+ #include <time.h>
+ #include <semaphore.h>
+ #include <errno.h>
+ #include <string.h>
+
+const int datasize = 1 << 25;
+
+void generate_data(char* data){
+    for(int i = 0; i < datasize; i++){
+        data[i] = (char)(i%256);
+    }
+}
+
+int check(char* data1, char* data2, int size){
+     for(int i = 0; i < size; i++) {
+        if(data1[i] != data2[i]){
+            return 0;
+        }
+    }
+    return 1;
+}
+
+int init_shared(char* shm_ptr, int data_size){
+    int key_shm = rand();
+    shm_ptr = shmat(shmget(key_shm, datasize + 1, IPC_CREAT | 0666), NULL,0);
+    shm_ptr[datasize] = 0;
+    return 0;
+}
+
+int main() {
+
+
+
+    srand(time(NULL));
+
+    char* first_data = malloc(datasize);
+    char* received_data = malloc(datasize);
+
+
+
+
+    for(int i = 1; i < 25; i += 4){
+
+        int batch_size = 1 << i;
+
+        int key_shm = rand();
+
+        char* shm = shmat(shmget(key_shm, batch_size + 1, IPC_CREAT | 0777),NULL, 0);
+
+        shm[batch_size] = 0;
+
+        int pid = fork();
+
+
+        if(pid < 0){
+            printf("Fork error\n");
+            return -1;
+        }
+
+        clock_t start = clock();
+        if(!pid) {
+            for(int i = 0; i < datasize; i+= batch_size){
+
+                memcpy(shm, &first_data[i], batch_size);
+                shm[batch_size] = 1;
+
+                while (shm[batch_size]);        
+            }
+            return 1;
+        }
+        else
+        {
+            for(int i = 0; i < datasize; i += batch_size) {
+                while(!shm[batch_size]);
+                memcpy(&received_data[i], shm, batch_size);
+                shm[batch_size] = 0;
+            }
+        }
+
+        clock_t end = clock();
+        check(received_data,first_data, datasize);
+        printf("%d %f\n", batch_size, (double)(end - start)/CLOCKS_PER_SEC);
+    }
+free(first_data);
+free(received_data);
+return 0;
+} 
+
+buff	SHM	
+2 	4.117296
+32 	0.276250
+512 	0.060919
+8192 	0.027064
+131072 	0.023344
+2097152 0.031073
+
+
+
+
+MSGSYS
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+#include <string.h>
+#include <unistd.h>
+#include <sys/stat.h>
+#include <sys/ipc.h>
+#include <sys/msg.h>
+
+
+const int datasize = 1 << 25;
+
+typedef struct {
+    long mtype;
+    char mtext[1000000];
+} msg_buff;
+
+
+void generate_data(char* data){
+    for(int i = 0; i < datasize; i++){
+        data[i] = (char)(i%256);
+    }
+}
+
+int check(char* data1, char* data2, int size){
+     for(int i = 0; i < size; i++) {
+        if(data1[i] != data2[i]){
+            return 0;
+        }
+    }
+    return 1;
+}
+
+int init_msg( int* msg){
+    int key_msg = rand();
+    *msg = msgget(key_msg, IPC_CREAT | 0666);
+    if(msg < 0){
+        puts("Init msg error\n");
+        return 0;
+    }
+    return 1;
+}
+
+
+int main() {
+     srand(time(NULL));
+
+    char* first_data = malloc(datasize);
+    char* received_data = malloc(datasize);
+
+    for(int i = 0; i < datasize; i++) {
+        first_data[i] = (char)(i%256);
+        received_data[i] = 0;
+    }
+
+    for(int i = 1; i <25; i += 4){
+
+        int msg;
+
+        if(!init_msg(&msg)){
+            return(-1);
+        }
+
+        msg_buff m_buffer;
+        m_buffer.mtype = 1;
+
+        int buffer_size = 1 << i;
+
+        clock_t start = clock();
+
+        int pid = fork();
+
+
+        if(pid < 0){
+            printf("Fork error\n");
+            return -1;
+        }
+
+
+        if(!pid) {
+            for(int i = 0; i < datasize; i += buffer_size) {
+                memcpy(m_buffer.mtext, &first_data[i], buffer_size);
+                if(msgsnd(msg, &m_buffer, buffer_size, 0) < 0) {
+                    puts("Send error\n");
+                    return -1;
+                }
+            }  
+            return 1;
+        }
+        else
+        {
+            for(int i = 0; i < datasize; i += buffer_size) {
+                if(msgrcv(msg, &m_buffer, buffer_size, 1, 0) < 0) {
+                    printf("msgrcv error\n");
+                    return -1;
+                }
+                memcpy(&received_data[i], m_buffer.mtext, buffer_size);
+            }
+        }
+        clock_t end = clock();
+
+        check(first_data,received_data, datasize);
+        printf("%d %f\n", buffer_size, (double)(end - start)/CLOCKS_PER_SEC);
+
+    }
+
+free(first_data);
+free(received_data);
+return 0;
+} 
+
+
+buff	MSGSYS
+2 	9.988111
+32 	0.623215
+512 	0.051745
+8192 	0.024010
+Send error
